@@ -1,0 +1,32 @@
+---
+title: "1986 THE SMITHS QUEEN IS DEAD TOUR 8/26 LOS ANGELES CONCERT TICKET STUB J 109"
+listing_id: 405486480950
+url: "https://www.ebay.co.uk/itm/405486480950?_skw=%22smiths%22+ticket&hash=item5e68e0ae36:g:dJ4AAOSwUxdnjAoL"
+price: "113.28 GBP"
+seller: "10secondstolove"
+condition: ""
+gig_date: null
+first_seen: 2026-10-05
+images:
+  - stub-01.jpg
+  - stub-02.jpg
+specifics:
+  "Industry": "Music"
+  "Artist/Band": "The Smiths"
+  "Genre": "Rock & Pop"
+---
+
+# 1986 THE SMITHS QUEEN IS DEAD TOUR 8/26 LOS ANGELES CONCERT TICKET STUB J 109
+
+YOU ARE BIDDING ON AN
+ORIGINAL
+CONCERT TICKET STUB
+THIS IS FOR THE CITY AND DATE
+IN THE DESCRIPTION
+THE TICKET STUB SHOWS WEAR,
+BUT WOULD LOOK AWESOME
+FRAMED WITH PHOTOS
+OR OTHER MEMORABILIA.
+FREE US  SHIPPING
+WORLDWIDE BIDDERS $4.00
+THANK YOU AND BID WITH CONFIDENCE.

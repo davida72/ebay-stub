@@ -1,0 +1,32 @@
+---
+title: "1985 THE SMITHS MEAT IS MURDER TOUR HOLLYWOOD PALLADIUM CONCERT TICKET STUB 28 1"
+listing_id: 404505794059
+url: "https://www.ebay.co.uk/itm/404505794059?_skw=%22smiths%22+ticket&hash=item5e2e6c960b:g:1tQAAOSwauFk2lCR"
+price: "113.28 GBP"
+seller: "10secondstolove"
+condition: ""
+gig_date: null
+first_seen: 2026-10-05
+images:
+  - stub-01.jpg
+  - stub-02.jpg
+specifics:
+  "Industry": "Music"
+  "Artist/Band": "The Smiths"
+  "Genre": "Rock & Pop"
+---
+
+# 1985 THE SMITHS MEAT IS MURDER TOUR HOLLYWOOD PALLADIUM CONCERT TICKET STUB 28 1
+
+YOU ARE BIDDING ON AN
+ORIGINAL
+CONCERT TICKET STUB
+THIS IS FOR THE CITY AND DATE
+IN THE DESCRIPTION
+THE TICKET STUB SHOWS WEAR,
+BUT WOULD LOOK AWESOME
+FRAMED WITH PHOTOS
+OR OTHER MEMORABILIA.
+FREE US  SHIPPING
+WORLDWIDE BIDDERS $4.00
+THANK YOU AND BID WITH CONFIDENCE.
