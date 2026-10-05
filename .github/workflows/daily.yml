@@ -1,0 +1,38 @@
+name: Daily Smiths stub sweep
+
+on:
+  schedule:
+    - cron: "0 9 * * *"   # 09:00 UTC daily
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run scraper
+        env:
+          EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
+          EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
+        run: python smiths_stubs.py
+
+      - name: Commit new stubs
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "stubs: daily sync ${{ github.run_id }}"
+          file_pattern: "stubs/**"
+          # Don't let the cached OAuth token leak into git
+          # (.ebay-token.json is also in .gitignore)
+
