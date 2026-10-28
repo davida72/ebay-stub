@@ -3,3 +3,5 @@ beautifulsoup4>=4.12
 lxml>=5.1
 python-dateutil>=2.9
 dateparser>=1.2
+python-dotenv>=1.0
+boto3>=1.34

@@ -21,6 +21,7 @@ import logging
 import os
 import re
 import sys
+import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -29,6 +30,9 @@ from urllib.parse import urlparse
 import dateparser
 import requests
 from bs4 import BeautifulSoup
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ----- config ---------------------------------------------------------------
 
@@ -75,6 +79,11 @@ INDEX_PATH = STUBS_DIR / "index.json"
 TOKEN_CACHE_PATH = Path(".ebay-token.json")
 
 USER_AGENT = "ebay-stub-sweeper/1.0 (+github.com/davidamor/ebay-stub)"
+
+# kiss-my-shades R2 "Incoming" bucket. Images uploaded here show up in the
+# admin's Incoming review view and get AI-suggested dates by the admin service.
+R2_BUCKET = os.environ.get("R2_BUCKET", "smiths-live")
+R2_INCOMING_PREFIX = "_incoming/assets"
 
 log = logging.getLogger("smiths_stubs")
 
@@ -417,11 +426,185 @@ def write_markdown(folder: Path, listing: Listing, gig_date: str | None, first_s
     (folder / "listing.md").write_text("\n".join(lines))
 
 
+# ----- kiss-my-shades Incoming push ----------------------------------------
+
+
+def _r2_client():
+    """Lazy S3 client for Cloudflare R2. Only called when push mode is on."""
+    import boto3
+    from botocore.config import Config
+
+    account_id = os.environ["R2_ACCOUNT_ID"]
+    return boto3.client(
+        "s3",
+        endpoint_url=f"https://{account_id}.r2.cloudflarestorage.com",
+        aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
+        region_name="auto",
+        config=Config(signature_version="s3v4", retries={"max_attempts": 3}),
+    )
+
+
+def _r2_credentials_present() -> bool:
+    return all(os.environ.get(k) for k in
+               ("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"))
+
+
+def fetch_incoming_manifest(s3) -> list[dict]:
+    key = f"{R2_INCOMING_PREFIX}/assets.json"
+    try:
+        obj = s3.get_object(Bucket=R2_BUCKET, Key=key)
+        data = json.loads(obj["Body"].read())
+        return data if isinstance(data, list) else []
+    except s3.exceptions.NoSuchKey:
+        return []
+    except Exception as e:
+        # Fall back to empty rather than clobbering with a half-known state.
+        # ClientError.NoSuchKey can also surface this way depending on botocore.
+        if "NoSuchKey" in str(e):
+            return []
+        log.warning("could not fetch incoming manifest, assuming empty: %s", e)
+        return []
+
+
+def write_incoming_manifest(s3, entries: list[dict]) -> None:
+    body = (json.dumps(entries, indent=2) + "\n").encode("utf-8")
+    s3.put_object(
+        Bucket=R2_BUCKET,
+        Key=f"{R2_INCOMING_PREFIX}/assets.json",
+        Body=body,
+        ContentType="application/json",
+        CacheControl="no-cache",
+    )
+
+
+def merge_manifest(existing: list[dict], additions: list[dict]) -> list[dict]:
+    """Merge-by-filename. New entries win on conflict (idempotent re-uploads)."""
+    by_name = {e.get("filename"): e for e in existing if e.get("filename")}
+    for a in additions:
+        by_name[a["filename"]] = a
+    return list(by_name.values())
+
+
+_CONTENT_TYPES = {"jpg": "image/jpeg", "jpeg": "image/jpeg",
+                  "png": "image/png", "webp": "image/webp"}
+
+
+def push_listing_to_incoming(s3, listing: Listing, image_sources: list[tuple[str, Path]],
+                             gig_date: str | None) -> list[dict]:
+    """Upload each image to R2 _incoming/assets/ and merge the manifest.
+
+    image_sources: list of (remote_filename, local_path) tuples.
+    """
+    additions = []
+    now = dt.datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    for fname, local in image_sources:
+        ext = fname.rsplit(".", 1)[-1].lower()
+        ctype = _CONTENT_TYPES.get(ext, "image/jpeg")
+        s3.upload_file(
+            str(local), R2_BUCKET, f"{R2_INCOMING_PREFIX}/{fname}",
+            ExtraArgs={"ContentType": ctype},
+        )
+        additions.append({
+            "filename": fname,
+            "uploadedAt": now,
+            "type": "stub",
+            "contentType": ctype,
+            "source": "ebay-sweep",
+            "ebayListingId": listing.listing_id,
+            "ebayUrl": listing.url,
+            "gigDateHint": gig_date or None,
+        })
+    existing = fetch_incoming_manifest(s3)
+    merged = merge_manifest(existing, additions)
+    write_incoming_manifest(s3, merged)
+    return additions
+
+
+def _incoming_filename(listing_id: str, gig_date: str | None, idx: int, ext: str) -> str:
+    date_hint = gig_date or "unknown"
+    ext = ext.lstrip(".").lower() or "jpg"
+    return f"ebay-{listing_id}-{date_hint}-stub-{idx:02d}.{ext}"
+
+
+# ----- backfill -------------------------------------------------------------
+
+
+def backfill_to_incoming(s3, index: dict) -> dict:
+    """Upload already-saved local stub images to R2 incoming.
+
+    Walks every index entry with status=saved and no pushed_to flag, finds the
+    stub-NN.* images in stubs/<folder>/, uploads each under the standard
+    _incoming filename, merges the manifest once at the end, and marks the
+    entry as pushed in-place. Idempotent: entries missing images on disk are
+    logged and skipped without blocking the rest.
+    """
+    counters = {"candidates": 0, "pushed": 0, "no-images": 0, "errors": 0}
+    all_additions: list[dict] = []
+    now = dt.datetime.utcnow().isoformat(timespec="seconds") + "Z"
+
+    for listing_id, entry in list(index.items()):
+        if entry.get("status") != "saved" or entry.get("pushed_to"):
+            continue
+        counters["candidates"] += 1
+        folder_name = entry.get("folder")
+        if not folder_name:
+            counters["no-images"] += 1
+            continue
+        folder = STUBS_DIR / folder_name
+        images = sorted(folder.glob("stub-*.*"))
+        if not images:
+            log.warning("backfill: %s has no local images in %s", listing_id, folder)
+            counters["no-images"] += 1
+            continue
+
+        gig_date = entry.get("gig_date")
+        r2_filenames: list[str] = []
+        try:
+            for i, local in enumerate(images, start=1):
+                ext = local.suffix
+                remote_name = _incoming_filename(listing_id, gig_date, i, ext)
+                ctype = _CONTENT_TYPES.get(ext.lstrip(".").lower(), "image/jpeg")
+                s3.upload_file(
+                    str(local), R2_BUCKET, f"{R2_INCOMING_PREFIX}/{remote_name}",
+                    ExtraArgs={"ContentType": ctype},
+                )
+                r2_filenames.append(remote_name)
+                all_additions.append({
+                    "filename": remote_name,
+                    "uploadedAt": now,
+                    "type": "stub",
+                    "contentType": ctype,
+                    "source": "ebay-sweep-backfill",
+                    "ebayListingId": listing_id,
+                    "ebayUrl": f"https://www.ebay.co.uk/itm/{listing_id}",
+                    "gigDateHint": gig_date or None,
+                })
+        except Exception as e:
+            counters["errors"] += 1
+            log.exception("backfill failed for %s: %s", listing_id, e)
+            continue
+
+        entry["pushed_to"] = "kms-incoming"
+        entry["r2_filenames"] = r2_filenames
+        counters["pushed"] += 1
+        log.info("backfilled %s (%d images)", listing_id, len(r2_filenames))
+
+    if all_additions:
+        existing = fetch_incoming_manifest(s3)
+        merged = merge_manifest(existing, all_additions)
+        write_incoming_manifest(s3, merged)
+        log.info("manifest merged: +%d entries, total=%d", len(all_additions), len(merged))
+
+    return counters
+
+
 # ----- main loop ------------------------------------------------------------
 
 
 def process_listing(session: requests.Session, legacy_id: str, item_id: str, web_url: str,
-                    index: dict, debug_dates: bool) -> str:
+                    index: dict, debug_dates: bool, s3=None) -> str:
+    push_incoming = s3 is not None
     listing = fetch_listing(session, legacy_id, item_id, web_url)
 
     if is_morrissey_solo(listing.title):
@@ -443,16 +626,36 @@ def process_listing(session: requests.Session, legacy_id: str, item_id: str, web
     folder.mkdir(parents=True, exist_ok=True)
 
     image_filenames: list[str] = []
-    for i, img_url in enumerate(listing.image_urls, start=1):
-        ext = _image_extension(img_url)
-        fname = f"stub-{i:02d}{ext}"
-        if download_image(img_url, folder / fname):
-            image_filenames.append(fname)
+    r2_filenames: list[str] = []
+
+    if push_incoming:
+        # Download to a temp dir, upload to R2, then discard the bytes locally.
+        # Only listing.md stays in the repo so stubs/ never bloats.
+        with tempfile.TemporaryDirectory(prefix=f"ebay-{legacy_id}-") as tmp:
+            tmpdir = Path(tmp)
+            sources: list[tuple[str, Path]] = []
+            for i, img_url in enumerate(listing.image_urls, start=1):
+                ext = _image_extension(img_url)
+                local = tmpdir / f"stub-{i:02d}{ext}"
+                if not download_image(img_url, local):
+                    continue
+                remote_name = _incoming_filename(legacy_id, gig_date, i, ext)
+                sources.append((remote_name, local))
+            if sources:
+                push_listing_to_incoming(s3, listing, sources, gig_date)
+                r2_filenames = [name for name, _ in sources]
+                image_filenames = r2_filenames  # markdown points at R2 names
+    else:
+        for i, img_url in enumerate(listing.image_urls, start=1):
+            ext = _image_extension(img_url)
+            fname = f"stub-{i:02d}{ext}"
+            if download_image(img_url, folder / fname):
+                image_filenames.append(fname)
 
     first_seen = dt.date.today().isoformat()
     write_markdown(folder, listing, gig_date, first_seen, image_filenames)
 
-    index[legacy_id] = {
+    index_entry = {
         "status": "saved",
         "folder": folder_name,
         "title": listing.title,
@@ -460,8 +663,13 @@ def process_listing(session: requests.Session, legacy_id: str, item_id: str, web
         "image_count": len(image_filenames),
         "first_seen": first_seen,
     }
-    log.info("saved %s -> %s (%d images, date=%s)",
-             legacy_id, folder_name, len(image_filenames), gig_date)
+    if push_incoming:
+        index_entry["pushed_to"] = "kms-incoming"
+        index_entry["r2_filenames"] = r2_filenames
+    index[legacy_id] = index_entry
+    where = "→ kms-incoming" if push_incoming else folder_name
+    log.info("saved %s %s (%d images, date=%s)",
+             legacy_id, where, len(image_filenames), gig_date)
     return "saved" if gig_date else "saved-undated"
 
 
@@ -471,10 +679,43 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-pages", type=int, default=MAX_PAGES)
     parser.add_argument("--limit", type=int, default=0,
                         help="stop after processing N new listings (0 = no limit)")
+    parser.add_argument("--push-incoming", action="store_true",
+                        default=os.environ.get("KMS_PUSH_INCOMING", "").lower() in ("1", "true", "yes"),
+                        help="upload each new listing's images to the kiss-my-shades R2 "
+                             "Incoming bucket instead of saving them locally. Default "
+                             "honours KMS_PUSH_INCOMING env var. Requires R2_ACCOUNT_ID, "
+                             "R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY.")
+    parser.add_argument("--backfill", action="store_true",
+                        help="upload already-saved local stub images to the kiss-my-shades "
+                             "R2 Incoming bucket for every index entry missing pushed_to. "
+                             "Skips the eBay search entirely. Requires R2 credentials.")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     STUBS_DIR.mkdir(parents=True, exist_ok=True)
+
+    if args.backfill:
+        if not _r2_credentials_present():
+            log.error("--backfill requires R2 credentials "
+                      "(R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY).")
+            return 2
+        s3 = _r2_client()
+        log.info("backfill mode: uploading existing local stubs to s3://%s/%s/",
+                 R2_BUCKET, R2_INCOMING_PREFIX)
+        index = load_index()
+        counters = backfill_to_incoming(s3, index)
+        save_index(index)
+        log.info("backfill done: %s", counters)
+        return 0
+
+    s3 = None
+    if args.push_incoming:
+        if not _r2_credentials_present():
+            log.error("--push-incoming requested but R2 credentials are missing. "
+                      "Set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY.")
+            return 2
+        s3 = _r2_client()
+        log.info("push-incoming mode: uploading to s3://%s/%s/", R2_BUCKET, R2_INCOMING_PREFIX)
 
     token = fetch_oauth_token()
     session = api_session(token)
@@ -489,7 +730,8 @@ def main(argv: list[str] | None = None) -> int:
             continue
         counters["new"] += 1
         try:
-            tag = process_listing(session, legacy_id, item_id, web_url, index, args.debug_dates)
+            tag = process_listing(session, legacy_id, item_id, web_url, index,
+                                  args.debug_dates, s3=s3)
             if tag in counters:
                 counters[tag] += 1
             else:

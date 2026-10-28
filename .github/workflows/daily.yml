@@ -26,13 +26,18 @@ jobs:
         env:
           EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
           EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
+          KMS_PUSH_INCOMING: "1"
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         run: python smiths_stubs.py
 
-      - name: Commit new stubs
+      - name: Commit new stub metadata
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "stubs: daily sync ${{ github.run_id }}"
-          file_pattern: "stubs/**"
-          # Don't let the cached OAuth token leak into git
-          # (.ebay-token.json is also in .gitignore)
+          # Images go to R2 Incoming — only metadata lands in git.
+          file_pattern: |
+            stubs/index.json
+            stubs/**/listing.md
 

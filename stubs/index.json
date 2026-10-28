@@ -388,6 +388,10 @@
     "folder": "1984-03-13__197969634225",
     "gig_date": "1984-03-13",
     "image_count": 1,
+    "pushed_to": "kms-incoming",
+    "r2_filenames": [
+      "ebay-197969634225-1984-03-13-stub-01.jpg"
+    ],
     "status": "saved",
     "title": "The Smiths original ticket Stub Manchester Free Trade Hall 13 March 1984."
   },
@@ -564,6 +568,15 @@
     "folder": "unknown__267714121159",
     "gig_date": null,
     "image_count": 6,
+    "pushed_to": "kms-incoming",
+    "r2_filenames": [
+      "ebay-267714121159-unknown-stub-01.jpg",
+      "ebay-267714121159-unknown-stub-02.jpg",
+      "ebay-267714121159-unknown-stub-03.jpg",
+      "ebay-267714121159-unknown-stub-04.jpg",
+      "ebay-267714121159-unknown-stub-05.jpg",
+      "ebay-267714121159-unknown-stub-06.jpg"
+    ],
     "status": "saved",
     "title": "The Smiths Original Genuine Concert ticket Stub Manchester Free Trade Hall 1984."
   },
@@ -636,6 +649,14 @@
     "folder": "unknown__307221087605",
     "gig_date": null,
     "image_count": 5,
+    "pushed_to": "kms-incoming",
+    "r2_filenames": [
+      "ebay-307221087605-unknown-stub-01.jpg",
+      "ebay-307221087605-unknown-stub-02.jpg",
+      "ebay-307221087605-unknown-stub-03.jpg",
+      "ebay-307221087605-unknown-stub-04.jpg",
+      "ebay-307221087605-unknown-stub-05.jpg"
+    ],
     "status": "saved",
     "title": "Johnny Marr Concert Ticket 2000 First Solo Gig Has Guitar Stolen The Smiths "
   },

@@ -1,4 +1,11 @@
 .ebay-token.json
+.env
+# Images belong in R2 (kms Incoming), not git. Local runs may still create
+# them for inspection — don't let them get committed.
+stubs/**/*.jpg
+stubs/**/*.jpeg
+stubs/**/*.png
+stubs/**/*.webp
 __pycache__/
 *.pyc
 .venv/

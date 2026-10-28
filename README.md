@@ -48,9 +48,36 @@ python smiths_stubs.py --limit 3 --debug-dates   # 3 listings, log date extracti
 
 Re-runs are idempotent — `stubs/index.json` tracks every listing ID the script has already seen (saved or skipped) and never re-fetches it. The OAuth token is cached in `.ebay-token.json` (gitignored) for ~2 hours.
 
+## Push images to kiss-my-shades Incoming
+
+Instead of hoarding image bytes in this repo, each listing's images can be shipped straight to the kiss-my-shades R2 `_incoming/assets/` bucket, where the admin UI's Incoming review will show them and the Gemini-powered triage will suggest a gig date.
+
+```sh
+python smiths_stubs.py --push-incoming
+# or:
+export KMS_PUSH_INCOMING=1
+python smiths_stubs.py
+```
+
+Requirements (set these in `.env` locally, or as GitHub Actions secrets for CI):
+
+- `R2_ACCOUNT_ID`
+- `R2_ACCESS_KEY_ID`
+- `R2_SECRET_ACCESS_KEY`
+
+Bucket defaults to `smiths-live`; override with `R2_BUCKET` if needed.
+
+Filenames land as `ebay-<listingId>-<gigDateOrUnknown>-stub-NN.jpg` and the Incoming `assets.json` manifest gets merged in-place. The ebay-stub repo only accumulates per-listing `listing.md` files (metadata, no bytes) — repo stays tiny forever.
+
 ## Scheduled run
 
-`.github/workflows/daily.yml` runs the scraper at 09:00 UTC daily and commits any new `stubs/**` content back to the repo. You can also trigger it manually from the Actions tab (`workflow_dispatch`).
+`.github/workflows/daily.yml` runs the scraper at 09:00 UTC daily with `KMS_PUSH_INCOMING=1`, so new eBay listings land in the kms Incoming bucket within hours. The commit step only touches `stubs/index.json` + `stubs/**/listing.md` (no image bytes).
+
+Required repo secrets:
+- `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`
+- `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`
+
+Also triggerable manually from the Actions tab (`workflow_dispatch`).
 
 ## Known limits
 
