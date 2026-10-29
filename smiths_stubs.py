@@ -74,6 +74,23 @@ MORRISSEY_SOLO_KEYWORDS = (
     "world peace",
 )
 
+# Marr post-Smiths projects — unambiguous: these never appear in a
+# genuine 1982–1986 Smiths listing.
+MARR_SOLO_KEYWORDS = (
+    "the healers",
+    "modest mouse",
+    "the cribs",
+    "the messenger",
+    "playland",
+    "call the comet",
+    "fever dreams",
+    "spirit power",
+    "electronic",  # Marr + Bernard Sumner, 1988+
+)
+
+# Years that place a gig outside The Smiths' 1982–1986 active window.
+_NON_SMITHS_YEAR_RE = re.compile(r"\b(?:19(?:8[7-9]|9\d)|20\d{2})\b")
+
 STUBS_DIR = Path("stubs")
 INDEX_PATH = STUBS_DIR / "index.json"
 TOKEN_CACHE_PATH = Path(".ebay-token.json")
@@ -296,11 +313,38 @@ def fetch_listing(session: requests.Session, legacy_id: str, item_id: str, web_u
 # ----- filters & date extraction -------------------------------------------
 
 
-def is_morrissey_solo(title: str) -> bool:
-    t = title.lower()
-    if "smiths" in t:
-        return False
-    return any(kw in t for kw in MORRISSEY_SOLO_KEYWORDS)
+def is_non_smiths(listing: "Listing") -> str | None:
+    """Return a short reason string if the listing is a Morrissey or Marr solo
+    item, otherwise None. Scans title, item specifics, and description."""
+    title_lower = (listing.title or "").lower()
+    specifics_blob = " ".join(f"{k} {v}" for k, v in listing.specifics.items()).lower()
+    body_blob = (listing.description_text or "").lower()
+
+    for kw in MARR_SOLO_KEYWORDS:
+        if kw in title_lower or kw in specifics_blob:
+            return f"marr-solo:{kw}"
+
+    # Johnny Marr by name is a signal only when he's clearly the headliner —
+    # in a Smiths listing he often appears in passing descriptions.
+    if "johnny marr" in title_lower and (
+        "smiths" not in title_lower or _NON_SMITHS_YEAR_RE.search(title_lower)
+    ):
+        return "marr-solo:marr-headlines-title"
+
+    # Morrissey keyword in the title with no "smiths" claim: original behaviour.
+    if "smiths" not in title_lower:
+        for kw in MORRISSEY_SOLO_KEYWORDS:
+            if kw in title_lower:
+                return f"morrissey-solo:{kw}"
+        # Fall through to specifics/description when title doesn't claim smiths.
+        for kw in MORRISSEY_SOLO_KEYWORDS:
+            if kw in specifics_blob or kw in body_blob:
+                return f"morrissey-solo-body:{kw}"
+        m = _NON_SMITHS_YEAR_RE.search(title_lower)
+        if m:
+            return f"non-smiths-year-in-title:{m.group(0)}"
+
+    return None
 
 
 _MONTH_RE = (
@@ -607,11 +651,13 @@ def process_listing(session: requests.Session, legacy_id: str, item_id: str, web
     push_incoming = s3 is not None
     listing = fetch_listing(session, legacy_id, item_id, web_url)
 
-    if is_morrissey_solo(listing.title):
-        log.info("skip morrissey-solo: %s (%s)", legacy_id, listing.title[:80])
-        index[legacy_id] = {"status": "skipped-morrissey", "title": listing.title,
+    reason = is_non_smiths(listing)
+    if reason:
+        log.info("skip non-smiths (%s): %s (%s)", reason, legacy_id, listing.title[:80])
+        index[legacy_id] = {"status": "skipped-non-smiths", "reason": reason,
+                            "title": listing.title,
                             "first_seen": dt.date.today().isoformat()}
-        return "skipped-morrissey"
+        return "skipped-non-smiths"
 
     date_text = "\n".join([listing.title,
                            *(f"{k}: {v}" for k, v in listing.specifics.items()),
@@ -723,7 +769,7 @@ def main(argv: list[str] | None = None) -> int:
 
     hits = search(session, max_pages=args.max_pages)
     counters = {"new": 0, "saved": 0, "saved-undated": 0,
-                "skipped-morrissey": 0, "errors": 0}
+                "skipped-non-smiths": 0, "errors": 0}
 
     for legacy_id, item_id, web_url in hits:
         if legacy_id in index:
