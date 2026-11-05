@@ -1449,6 +1449,19 @@
     "status": "saved",
     "title": "Morrissey 10/22/99 Tilburg Netherlands Poppodium Ticket Stub! Smiths Holland"
   },
+  "840094730313": {
+    "first_seen": "2026-11-05",
+    "folder": "unknown__840094730313",
+    "gig_date": null,
+    "image_count": 2,
+    "pushed_to": "kms-incoming",
+    "r2_filenames": [
+      "ebay-840094730313-unknown-stub-01.jpg",
+      "ebay-840094730313-unknown-stub-02.jpg"
+    ],
+    "status": "saved",
+    "title": "1992 MORRISSEY DEL MAR CALIFORNIA CONCERT TICKET YOUR ARSENAL TOUR THE SMITHS"
+  },
   "860022478144": {
     "first_seen": "2026-10-08",
     "folder": "unknown__860022478144",
@@ -1482,6 +1495,18 @@
     "pushed_to": "kms-incoming",
     "r2_filenames": [
       "ebay-960085663534-1986-07-19-stub-01.jpg"
+    ],
+    "status": "saved",
+    "title": "The Smiths New Order ticket GMEX Manchester 19/07/86 #N18"
+  },
+  "960154149481": {
+    "first_seen": "2026-11-05",
+    "folder": "1986-07-19__960154149481",
+    "gig_date": "1986-07-19",
+    "image_count": 1,
+    "pushed_to": "kms-incoming",
+    "r2_filenames": [
+      "ebay-960154149481-1986-07-19-stub-01.jpg"
     ],
     "status": "saved",
     "title": "The Smiths New Order ticket GMEX Manchester 19/07/86 #N18"
