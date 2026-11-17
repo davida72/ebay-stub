@@ -1608,5 +1608,17 @@
     ],
     "status": "saved",
     "title": "The Smiths New Order ticket GMEX Manchester 19/07/86 #N18"
+  },
+  "960205019143": {
+    "first_seen": "2026-11-17",
+    "folder": "1986-07-19__960205019143",
+    "gig_date": "1986-07-19",
+    "image_count": 1,
+    "pushed_to": "kms-incoming",
+    "r2_filenames": [
+      "ebay-960205019143-1986-07-19-stub-01.jpg"
+    ],
+    "status": "saved",
+    "title": "The Smiths New Order ticket GMEX Manchester 19/07/86 #0029"
   }
 }
